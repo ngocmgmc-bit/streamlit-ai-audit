@@ -8,7 +8,7 @@ st.subheader("1️⃣ Upload Hồ sơ mời thầu (HSMT)")
 hsmt_file = st.file_uploader(
     "Chọn file HSMT (PDF hoặc Word)",
     type=["pdf", "docx"],
-    accept_multiple_files=False
+    accept_multiple_files=True
 )
 
 st.subheader("2️⃣ Upload Hồ sơ dự thầu (HSDT)")
