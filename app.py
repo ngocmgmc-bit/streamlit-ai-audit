@@ -22,7 +22,6 @@ st.divider()
 
 if hsmt_file and hsdt_files:
     st.success(f"✅ Đã nhận {len(hsmt_file)} file HSMT và {len(hsdt_files)} file HSDT")
-
     st.markdown("### 📘 Danh sách HSMT")
     for i, f in enumerate(hsmt_file, start=1):
         st.write(f"{i}. {f.name}")
