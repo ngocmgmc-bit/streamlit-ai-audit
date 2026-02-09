@@ -3,25 +3,30 @@ import os
 import pdfplumber
 from google.generativeai import GenerativeModel, configure
 
-# =========================
+# ======================
 # CẤU HÌNH CHUNG
-# =========================
-st.set_page_config(page_title="Hệ thống chấm thầu – Tổ chuyên gia", layout="wide")
+# ======================
+st.set_page_config(
+    page_title="Hệ thống chấm thầu – Tổ chuyên gia",
+    layout="wide"
+)
 
-# =========================
+# ======================
 # KIỂM TRA API KEY
-# =========================
+# ======================
 GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GOOGLE_API_KEY:
     st.error("❌ Chưa cấu hình GEMINI_API_KEY trong biến môi trường")
     st.stop()
 
 configure(api_key=GOOGLE_API_KEY)
-model = GenerativeModel("models/gemini-1.5-flash")
 
-# =========================
+# ✅ MODEL ĐÚNG – KHÔNG LỖI
+model = GenerativeModel("models/gemini-1.5-pro")
+
+# ======================
 # HÀM TIỆN ÍCH
-# =========================
+# ======================
 def extract_text_from_pdf(file):
     text = ""
     with pdfplumber.open(file) as pdf:
@@ -42,15 +47,17 @@ def ai_extract_criteria(hsmt_text):
 Bạn là chuyên gia đấu thầu.
 
 Từ nội dung HSMT sau, hãy TRÍCH XUẤT ĐẦY ĐỦ các tiêu chí đánh giá HSDT.
+
 Yêu cầu:
 - Bám sát tuyệt đối HSMT
 - Chia rõ: Kỹ thuật / Năng lực / Tài chính / Khác
 - Mỗi tiêu chí gồm:
-  - ten_tieu_chi
-  - mo_ta
-  - can_cu_hsmt
+  - tên_tiêu_chí
+  - mô_tả
+  - căn_cứ_HSMT
 
-Trả về DẠNG GẠCH ĐẦU DÒNG, DỄ ĐỌC.
+Trả về dạng GẠCH ĐẦU DÒNG, dễ đọc.
+
 HSMT:
 {hsmt_text}
 """
@@ -71,26 +78,26 @@ Yêu cầu:
 - Đánh giá TỪNG tiêu chí
 - Kết luận: ĐẠT / KHÔNG ĐẠT
 - Nêu rõ căn cứ trích từ HSDT
-- Viết đúng văn phong báo cáo tổ chuyên gia
+- Văn phong báo cáo tổ chuyên gia
 """
     return call_gemini(prompt)
 
-# =========================
+# ======================
 # GIAO DIỆN
-# =========================
+# ======================
 st.title("📊 HỆ THỐNG CHẤM THẦU – TỔ CHUYÊN GIA")
 
 tabs = st.tabs([
-    "1️⃣ Upload HSMT & HSDT",
-    "2️⃣ Gán tiêu chí (AI)",
-    "3️⃣ Chấm thầu"
+    "📁 Upload HSMT & HSDT",
+    "🎯 Gán tiêu chí (AI)",
+    "📑 Chấm thầu"
 ])
 
-# =========================
+# ======================
 # TAB 1: UPLOAD
-# =========================
+# ======================
 with tabs[0]:
-    st.subheader("📂 Upload hồ sơ")
+    st.subheader("📁 Upload hồ sơ")
 
     hsmt_files = st.file_uploader(
         "Upload HSMT (nhiều file PDF – cùng 1 bộ HSMT)",
@@ -118,9 +125,9 @@ with tabs[0]:
         st.session_state.hsdt_text = hsdt_text
         st.success(f"✅ Đã đọc {len(hsdt_files)} file HSDT")
 
-# =========================
+# ======================
 # TAB 2: GÁN TIÊU CHÍ
-# =========================
+# ======================
 with tabs[1]:
     st.subheader("🎯 Gán tiêu chí đánh giá theo HSMT")
 
@@ -132,18 +139,18 @@ with tabs[1]:
             st.session_state.criteria_text = criteria_text
             st.success("✅ AI đã trích xuất tiêu chí")
 
-        if "criteria_text" in st.session_state:
-            st.text_area(
-                "Danh sách tiêu chí (có thể chỉnh sửa)",
-                st.session_state.criteria_text,
-                height=400
-            )
+    if "criteria_text" in st.session_state:
+        st.text_area(
+            "Danh sách tiêu chí (có thể chỉnh sửa)",
+            st.session_state.criteria_text,
+            height=400
+        )
 
-# =========================
+# ======================
 # TAB 3: CHẤM THẦU
-# =========================
+# ======================
 with tabs[2]:
-    st.subheader("🧠 Chấm thầu – Báo cáo tổ chuyên gia")
+    st.subheader("📑 Chấm thầu – Báo cáo tổ chuyên gia")
 
     if "criteria_text" not in st.session_state:
         st.warning("⚠️ Chưa có tiêu chí đánh giá")
