@@ -1,23 +1,3 @@
-import streamlit as st
-
-st.set_page_config(page_title="Tool chấm thầu", layout="wide")
-
-st.title("📑 HỆ THỐNG CHẤM THẦU – MODULE A1")
-
-st.subheader("1️⃣ Upload Hồ sơ mời thầu (HSMT)")
-hsmt_file = st.file_uploader(
-    "Chọn file HSMT (PDF hoặc Word)",
-    type=["pdf", "docx"],
-    accept_multiple_files=True
-)
-
-st.subheader("2️⃣ Upload Hồ sơ dự thầu (HSDT)")
-hsdt_files = st.file_uploader(
-    "Chọn các file HSDT (PDF hoặc Word)",
-    type=["pdf", "docx"],
-    accept_multiple_files=True
-)
-
 st.divider()
 st.subheader("📌 Nội dung trích xuất từ HSMT")
 
