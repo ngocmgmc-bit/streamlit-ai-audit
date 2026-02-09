@@ -70,8 +70,4 @@ st.text_area(
     height=400
 )
 
-    st.text_area(
-        "📄 Nội dung HSMT (đã trích xuất)",
-        hsmt_text,
-        height=400
-    )
+   
