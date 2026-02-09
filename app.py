@@ -1,161 +1,168 @@
 import streamlit as st
 import os
 import json
+import google.generativeai as genai
+from PyPDF2 import PdfReader
 
-# ================== AI SETUP (SAFE) ==================
-USE_AI = True
-try:
-    import google.generativeai as genai
-    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    MODEL = genai.GenerativeModel("models/gemini-1.5-flash")
-except Exception:
-    USE_AI = False
-    MODEL = None
+# ======================
+# CẤU HÌNH CHUNG
+# ======================
+st.set_page_config(page_title="Hệ thống chấm thầu – Tổ chuyên gia", layout="wide")
+
+if "GOOGLE_API_KEY" not in os.environ:
+    st.error("❌ Chưa cấu hình GOOGLE_API_KEY trong biến môi trường")
+    st.stop()
+
+genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+# ======================
+# HÀM DÙNG CHUNG
+# ======================
+def read_pdf(uploaded_file):
+    reader = PdfReader(uploaded_file)
+    text = ""
+    for p in reader.pages:
+        text += p.extract_text() or ""
+    return text
 
 
-def call_ai(prompt: str) -> str:
-    if not USE_AI:
-        return ""
+def call_gemini_json(prompt):
+    response = model.generate_content(prompt)
+    raw = response.text.strip()
+
+    # loại bỏ ```json nếu có
+    raw = raw.replace("```json", "").replace("```", "").strip()
+
     try:
-        return MODEL.generate_content(prompt).text
-    except Exception:
-        return ""
+        return json.loads(raw)
+    except Exception as e:
+        st.error("❌ AI không trả về JSON hợp lệ")
+        st.code(raw)
+        raise e
 
 
-# ================== AI LOGIC ==================
-def ai_extract_criteria(hsmt_text: str):
+# ======================
+# AI TRÍCH TIÊU CHÍ TỪ HSMT
+# ======================
+def ai_extract_criteria(hsmt_text):
     prompt = f"""
-Bạn là TỔ CHUYÊN GIA ĐẤU THẦU.
+Bạn là TỔ CHUYÊN GIA ĐẤU THẦU theo Luật Đấu thầu Việt Nam.
 
 Nhiệm vụ:
-- Đọc HSMT
-- Trích xuất TOÀN BỘ tiêu chí đánh giá
-- Mỗi tiêu chí gồm:
+- Đọc HSMT bên dưới
+- Trích xuất TOÀN BỘ tiêu chí đánh giá HSDT
+- Mỗi tiêu chí phải có:
   + ten_tieu_chi
+  + loai (đạt/không đạt | chấm điểm)
+  + can_cu (mục/chương trong HSMT)
   + mo_ta
-  + can_cu (điều/chương/mục trong HSMT)
 
-Xuất JSON thuần, KHÔNG giải thích.
+YÊU CẦU BẮT BUỘC:
+- Chỉ trả về JSON
+- Dạng danh sách (list)
+- Không thêm lời giải thích
 
 HSMT:
-{hsmt_text}
+\"\"\"{hsmt_text[:12000]}\"\"\"
 """
-    text = call_ai(prompt)
-
-    if not text:
-        return []
-
-    try:
-        json_text = text[text.find("["): text.rfind("]")+1]
-        return json.loads(json_text)
-    except Exception:
-        return []
+    return call_gemini_json(prompt)
 
 
+# ======================
+# AI CHẤM THẦU
+# ======================
 def ai_score_bid(criteria, hsdt_text):
     prompt = f"""
 Bạn là TỔ CHUYÊN GIA CHẤM THẦU.
 
-Nguyên tắc:
-- TUÂN THỦ TUYỆT ĐỐI HSMT
-- KHÔNG suy diễn
-- Nếu không đáp ứng → Không đạt
-
-Tiêu chí:
+Tiêu chí đánh giá (JSON):
 {json.dumps(criteria, ensure_ascii=False)}
 
-HSDT:
-{hsdt_text}
+Hồ sơ dự thầu:
+\"\"\"{hsdt_text[:12000]}\"\"\"
 
-Xuất bảng JSON:
-[
-  {{
-    "ten_tieu_chi": "",
-    "ket_qua": "Đạt/Không đạt",
-    "nhan_xet": "",
-    "can_cu": ""
-  }}
-]
+Nhiệm vụ:
+- Đánh giá từng tiêu chí
+- Trả kết quả JSON với:
+  + ten_tieu_chi
+  + ket_qua (Đạt / Không đạt / Điểm số)
+  + nhan_xet
+  + trich_dan_tu_HSDT
+
+Chỉ trả JSON, không giải thích.
 """
-    text = call_ai(prompt)
-    if not text:
-        return []
-
-    try:
-        json_text = text[text.find("["): text.rfind("]")+1]
-        return json.loads(json_text)
-    except Exception:
-        return []
+    return call_gemini_json(prompt)
 
 
-# ================== UI ==================
-st.set_page_config(page_title="AI Chấm thầu HSMT", layout="wide")
-
+# ======================
+# GIAO DIỆN
+# ======================
 st.title("📊 HỆ THỐNG CHẤM THẦU – TỔ CHUYÊN GIA")
 
-tab1, tab2, tab3 = st.tabs([
-    "1️⃣ Upload HSMT & HSDT",
-    "2️⃣ Gán tiêu chí (AI)",
-    "3️⃣ Chấm thầu"
-])
+tab1, tab2, tab3 = st.tabs(["1️⃣ Upload HSMT & HSDT", "2️⃣ Gán tiêu chí (AI)", "3️⃣ Chấm thầu"])
 
-# ---------- TAB 1 ----------
+
+# ======================
+# TAB 1: UPLOAD
+# ======================
 with tab1:
-    st.subheader("Upload hồ sơ")
+    st.subheader("📤 Upload hồ sơ")
 
-    hsmt = st.text_area("📘 Nội dung HSMT", height=250)
-    hsdt = st.text_area("📕 Nội dung HSDT", height=250)
+    hsmt_file = st.file_uploader("Upload HSMT (PDF)", type=["pdf"])
+    hsdt_file = st.file_uploader("Upload HSDT (PDF)", type=["pdf"])
 
-    if hsmt:
-        st.session_state.hsmt_text = hsmt
-    if hsdt:
-        st.session_state.hsdt_text = hsdt
+    if hsmt_file:
+        st.session_state.hsmt_text = read_pdf(hsmt_file)
+        st.success("✅ Đã đọc HSMT")
 
-# ---------- TAB 2 ----------
+    if hsdt_file:
+        st.session_state.hsdt_text = read_pdf(hsdt_file)
+        st.success("✅ Đã đọc HSDT")
+
+
+# ======================
+# TAB 2: GÁN TIÊU CHÍ
+# ======================
 with tab2:
     st.subheader("🎯 Gán tiêu chí đánh giá theo HSMT")
 
     if "hsmt_text" not in st.session_state:
-        st.warning("⚠️ Chưa có HSMT")
+        st.warning("⚠️ Cần upload HSMT trước")
     else:
         if st.button("🤖 AI gợi ý tiêu chí từ HSMT"):
-            with st.spinner("AI đang rà soát HSMT..."):
-                criteria = ai_extract_criteria(st.session_state.hsmt_text)
-
-            if not criteria:
-                st.error("❌ AI không trích xuất được – kiểm tra API Key hoặc HSMT")
-            else:
-                st.session_state.criteria = criteria
-                st.success(f"✅ Đã trích xuất {len(criteria)} tiêu chí")
+            with st.spinner("AI đang phân tích HSMT..."):
+                st.session_state.criteria = ai_extract_criteria(st.session_state.hsmt_text)
+                st.success("✅ Đã trích xuất tiêu chí")
 
         if "criteria" in st.session_state:
             for i, c in enumerate(st.session_state.criteria, 1):
                 with st.expander(f"Tiêu chí {i}: {c.get('ten_tieu_chi','')}"):
-                    st.text_area("Mô tả", c.get("mo_ta",""), height=80)
-                    st.text_area("Căn cứ HSMT", c.get("can_cu",""), height=60)
+                    st.write("**Loại:**", c.get("loai"))
+                    st.write("**Căn cứ:**", c.get("can_cu"))
+                    st.write("**Mô tả:**", c.get("mo_ta"))
 
-# ---------- TAB 3 ----------
+
+# ======================
+# TAB 3: CHẤM THẦU
+# ======================
 with tab3:
-    st.subheader("⚖️ Chấm thầu – Tổ chuyên gia")
+    st.subheader("🧮 Chấm thầu theo tiêu chí")
 
     if "criteria" not in st.session_state or "hsdt_text" not in st.session_state:
-        st.warning("⚠️ Thiếu tiêu chí hoặc HSDT")
+        st.warning("⚠️ Cần có tiêu chí và HSDT")
     else:
-        if st.button("🧠 AI hỗ trợ chấm thầu"):
-            with st.spinner("AI đang chấm thầu theo HSMT..."):
+        if st.button("⚖️ Chấm thầu"):
+            with st.spinner("AI đang chấm thầu..."):
                 result = ai_score_bid(
                     st.session_state.criteria,
                     st.session_state.hsdt_text
                 )
+                st.session_state.result = result
+                st.success("✅ Hoàn thành chấm thầu")
 
-            if not result:
-                st.error("❌ AI không trả kết quả")
-            else:
-                st.success("✅ Chấm thầu hoàn tất")
-                for r in result:
-                    with st.expander(r["ten_tieu_chi"]):
-                        st.write(f"**Kết quả:** {r['ket_qua']}")
-                        st.write(f"**Nhận xét:** {r['nhan_xet']}")
-                        st.write(f"**Căn cứ:** {r['can_cu']}")
-
-st.caption("⚠️ AI chỉ hỗ trợ – Quyết định cuối cùng thuộc Tổ chuyên gia")
+        if "result" in st.session_state:
+            for r in st.session_state.result:
+                with st.expander(f"{r.get('ten_tieu_chi','')} – {r.get('ket_qua','')}"):
+                    st.write("**Nhận xét:**", r.get("nhan_xet"))
+                    st.write("**Trích dẫn HSDT:**", r.get("trich_dan_tu_HSDT"))
