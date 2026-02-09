@@ -2,9 +2,7 @@ import streamlit as st
 import pdfplumber
 from docx import Document
 
-# =====================
-# HÀM ĐỌC FILE
-# =====================
+# ========= HÀM ĐỌC FILE =========
 def read_pdf(file):
     text = ""
     with pdfplumber.open(file) as pdf:
@@ -24,25 +22,21 @@ def read_file(file):
         return read_docx(file)
     return ""
 
-# =====================
-# CẤU HÌNH TRANG
-# =====================
+# ========= CẤU HÌNH =========
 st.set_page_config(page_title="AI Audit – Chấm thầu", layout="wide")
-st.title("📑 HỆ THỐNG CHẤM THẦU – TỔ CHUYÊN GIA (AI HỖ TRỢ)")
+st.title("📑 HỆ THỐNG CHẤM THẦU – TỔ CHUYÊN GIA")
 
 tab1, tab2, tab3 = st.tabs([
     "1️⃣ Upload HSMT",
-    "2️⃣ Gán tiêu chí (Chương III)",
+    "2️⃣ Gán tiêu chí",
     "3️⃣ Chấm thầu"
 ])
 
-# =====================
-# TAB 1 – UPLOAD HSMT
-# =====================
+# ========= TAB 1 =========
 with tab1:
-    st.header("📂 Upload Hồ sơ mời thầu (HSMT)")
+    st.header("📂 Upload HSMT")
     hsmt_files = st.file_uploader(
-        "Chọn file HSMT (PDF / DOCX)",
+        "Chọn HSMT (PDF/DOCX)",
         type=["pdf", "docx"],
         accept_multiple_files=True
     )
@@ -53,89 +47,63 @@ with tab1:
         for f in hsmt_files:
             hsmt_texts[f.name] = read_file(f)
 
-        st.success(f"Đã upload {len(hsmt_files)} file HSMT")
+        st.success(f"Đã upload {len(hsmt_files)} file")
 
-        selected = st.selectbox(
-            "Chọn HSMT để xem nội dung",
-            list(hsmt_texts.keys())
-        )
-
-        st.text_area(
-            "Nội dung HSMT",
-            hsmt_texts[selected],
-            height=400
-        )
+        name = st.selectbox("Chọn HSMT", list(hsmt_texts.keys()))
+        st.text_area("Nội dung", hsmt_texts[name], height=400)
 
     st.session_state["hsmt_texts"] = hsmt_texts
 
-# =====================
-# TAB 2 – GÁN TIÊU CHÍ
-# =====================
+# ========= TAB 2 =========
 with tab2:
-    st.header("🏷️ Gán tiêu chí đánh giá (Chương III – HSMT)")
+    st.header("🏷️ Gán tiêu chí đánh giá")
 
     if not st.session_state.get("hsmt_texts"):
-        st.warning("⚠️ Cần upload HSMT trước")
+        st.warning("Cần upload HSMT trước")
     else:
         criteria_text = st.text_area(
-            "Nhập tiêu chí (mỗi dòng là 1 tiêu chí)",
-            height=300,
-            placeholder="""
-Ví dụ:
-- Năng lực, kinh nghiệm
-- Nhân sự chủ chốt
-- Giải pháp kỹ thuật
-- Thiết bị
-"""
+            "Mỗi dòng là 1 tiêu chí",
+            height=300
         )
-
         criteria = [c.strip() for c in criteria_text.split("\n") if c.strip()]
         st.session_state["criteria"] = criteria
 
         if criteria:
             st.success(f"Đã ghi nhận {len(criteria)} tiêu chí")
 
-# =====================
-# TAB 3 – CHẤM THẦU
-# =====================
+# ========= TAB 3 =========
 with tab3:
-    st.header("⚖️ CHẤM THẦU – THEO TỔ CHUYÊN GIA")
+    st.header("⚖️ Chấm thầu")
 
     if not st.session_state.get("criteria"):
-        st.warning("⚠️ Chưa có tiêu chí đánh giá")
+        st.warning("Chưa có tiêu chí")
         st.stop()
 
     hsdt_files = st.file_uploader(
-        "📂 Upload Hồ sơ dự thầu (HSDT)",
+        "Upload HSDT",
         type=["pdf", "docx"],
         accept_multiple_files=True
     )
 
     if not hsdt_files:
-        st.warning("⚠️ Cần upload HSDT")
+        st.warning("Cần upload HSDT")
         st.stop()
 
-    hsdt_texts = {}
     for f in hsdt_files:
-        hsdt_texts[f.name] = read_file(f)
+        st.subheader(f"📁 {f.name}")
+        text = read_file(f)
 
-    for hsdt_name, hsdt_text in hsdt_texts.items():
-        st.subheader(f"📁 HSDT: {hsdt_name}")
-
-        for idx, criterion in enumerate(st.session_state["criteria"], start=1):
-            with st.expander(f"Tiêu chí {idx}: {criterion}", expanded=True):
-                result = st.radio(
+        for i, crit in enumerate(st.session_state["criteria"], 1):
+            with st.expander(f"Tiêu chí {i}: {crit}", expanded=True):
+                st.radio(
                     "Kết quả",
                     ["Đạt", "Không đạt"],
-                    key=f"{hsdt_name}_{idx}"
+                    key=f"{f.name}_{i}"
                 )
-
-                evidence = st.text_area(
-                    "Căn cứ (trích từ HSDT)",
-                    height=120,
-                    key=f"ev_{hsdt_name}_{idx}"
+                st.text_area(
+                    "Căn cứ",
+                    height=100,
+                    key=f"ev_{f.name}_{i}"
                 )
 
     st.success("✅ Hoàn tất chấm thầu")
-                    st.markdown("**🧠 Kết quả AI:**")
-                    st.markdown(textwrap.indent(ai_result, "> "))
