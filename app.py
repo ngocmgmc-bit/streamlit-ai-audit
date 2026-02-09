@@ -2,176 +2,155 @@ import streamlit as st
 from PyPDF2 import PdfReader
 from docx import Document
 import pandas as pd
-import io
 
-st.set_page_config(page_title="AI Audit HSMT – Chấm thầu", layout="wide")
+st.set_page_config(page_title="AI Audit – Chấm thầu", layout="wide")
+st.title("📑 HỆ THỐNG CHẤM THẦU – TỔ CHUYÊN GIA")
 
-# =========================
+# ==================================================
 # HÀM ĐỌC FILE
-# =========================
-def read_pdf(file):
-    reader = PdfReader(file)
-    text = ""
-    for page in reader.pages:
-        if page.extract_text():
-            text += page.extract_text() + "\n"
-    return text
-
-def read_docx(file):
-    doc = Document(file)
-    return "\n".join([p.text for p in doc.paragraphs])
-
+# ==================================================
 def extract_text(file):
     if file.name.lower().endswith(".pdf"):
-        return read_pdf(file)
+        reader = PdfReader(file)
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
     elif file.name.lower().endswith(".docx"):
-        return read_docx(file)
-    else:
-        return ""
+        doc = Document(file)
+        return "\n".join(p.text for p in doc.paragraphs)
+    return ""
 
-# =========================
+# ==================================================
 # SESSION STATE
-# =========================
+# ==================================================
 if "hsmt_files" not in st.session_state:
     st.session_state.hsmt_files = {}
-
-if "hsdt_files" not in st.session_state:
-    st.session_state.hsdt_files = {}
 
 if "criteria" not in st.session_state:
     st.session_state.criteria = []
 
-# =========================
-# GIAO DIỆN
-# =========================
-st.title("📑 AI AUDIT HSMT – CHẤM THẦU TỰ ĐỘNG")
+if "hsdt_files" not in st.session_state:
+    st.session_state.hsdt_files = {}
 
+# ==================================================
+# TABS
+# ==================================================
 tab1, tab2, tab3 = st.tabs([
-    "1️⃣ Upload & Tách HSMT",
-    "2️⃣ Gán nhãn tiêu chí HSMT",
-    "3️⃣ Upload HSDT & Chấm thầu"
+    "1️⃣ Upload HSMT",
+    "2️⃣ Gán tiêu chí đánh giá (Chương III)",
+    "3️⃣ CHẤM THẦU – TỔ CHUYÊN GIA"
 ])
 
-# =========================
+# ==================================================
 # TAB 1 – UPLOAD HSMT
-# =========================
+# ==================================================
 with tab1:
-    st.header("Upload Hồ sơ mời thầu (HSMT)")
-    hsmt_upload = st.file_uploader(
-        "Upload các file HSMT (PDF/DOCX)",
+    st.header("📘 Upload Hồ sơ mời thầu (HSMT)")
+
+    hsmt_uploads = st.file_uploader(
+        "Tải các file HSMT (PDF / DOCX)",
         type=["pdf", "docx"],
         accept_multiple_files=True
     )
 
-    if hsmt_upload:
-        for f in hsmt_upload:
-            content = extract_text(f)
-            st.session_state.hsmt_files[f.name] = content
+    if hsmt_uploads:
+        for f in hsmt_uploads:
+            if f.name not in st.session_state.hsmt_files:
+                st.session_state.hsmt_files[f.name] = extract_text(f)
 
     if st.session_state.hsmt_files:
-        st.success("✅ Đã tách nội dung HSMT theo từng file")
-        file_names = list(st.session_state.hsmt_files.keys())
-        selected = st.selectbox("Chọn file HSMT để xem", file_names)
-        st.text_area(
-            f"Nội dung: {selected}",
-            st.session_state.hsmt_files[selected],
-            height=350
-        )
+        fname = st.selectbox("Chọn file HSMT để xem", st.session_state.hsmt_files.keys())
+        st.text_area("Nội dung HSMT", st.session_state.hsmt_files[fname], height=350)
 
-# =========================
-# TAB 2 – GÁN NHÃN HSMT
-# =========================
+# ==================================================
+# TAB 2 – GÁN TIÊU CHÍ (CHƯƠNG III)
+# ==================================================
 with tab2:
-    st.header("Gán nhãn tiêu chí đánh giá theo HSMT")
+    st.header("📌 Gán tiêu chí đánh giá theo Chương III – HSMT")
 
-    st.info("Gán tiêu chí CHUẨN THEO HỒ SƠ MỜI THẦU – dùng cho chấm thầu")
-
-    with st.form("criteria_form"):
+    with st.form("add_criteria"):
         col1, col2 = st.columns(2)
+
         with col1:
-            criterion = st.text_input("Tên tiêu chí (VD: Doanh thu bình quân)")
-        with col2:
             group = st.selectbox(
                 "Nhóm tiêu chí",
                 [
-                    "A. Thông tin chung",
-                    "B. Điều kiện hợp lệ",
-                    "C. Năng lực & kinh nghiệm",
-                    "D. Đề xuất kỹ thuật",
-                    "E. Nhân sự",
-                    "F. Thiết bị",
-                    "G. Tài chính",
-                    "H. Điều kiện hợp đồng"
+                    "I. Điều kiện hợp lệ",
+                    "II. Năng lực & kinh nghiệm",
+                    "III. Yêu cầu kỹ thuật",
+                    "IV. Nhân sự",
+                    "V. Thiết bị",
+                    "VI. Điều kiện hợp đồng"
                 ]
             )
+            name = st.text_input("Tên tiêu chí")
 
-        description = st.text_area("Mô tả / yêu cầu theo HSMT")
-        required = st.checkbox("Tiêu chí bắt buộc (Đạt / Không đạt)", value=True)
+        with col2:
+            required = st.selectbox(
+                "Loại tiêu chí",
+                ["BẮT BUỘC (Đạt/Không đạt)", "KHÔNG BẮT BUỘC"]
+            )
 
-        submitted = st.form_submit_button("➕ Thêm tiêu chí")
+        description = st.text_area("Mô tả yêu cầu (trích đúng HSMT)")
 
-        if submitted and criterion:
+        submit = st.form_submit_button("➕ Thêm tiêu chí")
+
+        if submit and name.strip():
             st.session_state.criteria.append({
                 "group": group,
-                "criterion": criterion,
+                "name": name,
                 "description": description,
                 "required": required
             })
 
     if st.session_state.criteria:
-        df = pd.DataFrame(st.session_state.criteria)
-        st.subheader("Danh sách tiêu chí đã gán")
-        st.dataframe(df, use_container_width=True)
+        st.subheader("📋 Danh sách tiêu chí đã nhập")
+        st.dataframe(pd.DataFrame(st.session_state.criteria), use_container_width=True)
 
-# =========================
-# TAB 3 – UPLOAD HSDT & CHẤM THẦU
-# =========================
+# ==================================================
+# TAB 3 – CHẤM THẦU ĐÚNG MẪU TỔ CHUYÊN GIA
+# ==================================================
 with tab3:
-    st.header("Upload HSDT & Chấm thầu")
+    st.header("🧾 CHẤM THẦU THEO CHƯƠNG III – TỔ CHUYÊN GIA")
 
-    hsdt_upload = st.file_uploader(
-        "Upload HSDT của các nhà thầu (PDF/DOCX)",
+    hsdt_uploads = st.file_uploader(
+        "Upload HSDT của các nhà thầu (PDF / DOCX)",
         type=["pdf", "docx"],
-        accept_multiple_files=True,
-        key="hsdt"
+        accept_multiple_files=True
     )
 
-    if hsdt_upload:
-        for f in hsdt_upload:
-            content = extract_text(f)
-            st.session_state.hsdt_files[f.name] = content
+    if hsdt_uploads:
+        for f in hsdt_uploads:
+            st.session_state.hsdt_files[f.name] = extract_text(f)
 
-    if st.session_state.hsdt_files and st.session_state.criteria:
-        st.success("✅ Sẵn sàng chấm thầu")
-
+    if not st.session_state.criteria or not st.session_state.hsdt_files:
+        st.warning("⚠️ Cần có tiêu chí Chương III và HSDT để chấm thầu")
+    else:
         results = []
 
         for bidder, hsdt_text in st.session_state.hsdt_files.items():
             for c in st.session_state.criteria:
-                matched = c["criterion"].lower() in hsdt_text.lower()
+                found = c["name"].lower() in hsdt_text.lower()
+                result = "ĐẠT" if found else "KHÔNG ĐẠT"
+
                 results.append({
                     "Nhà thầu": bidder,
-                    "Nhóm": c["group"],
-                    "Tiêu chí": c["criterion"],
-                    "Bắt buộc": "Có" if c["required"] else "Không",
-                    "Kết quả": "Đạt" if matched else "Không đạt"
+                    "Nhóm tiêu chí": c["group"],
+                    "Tiêu chí": c["name"],
+                    "Bắt buộc": c["required"],
+                    "Kết quả": result
                 })
 
-        df_result = pd.DataFrame(results)
-        st.subheader("📊 KẾT QUẢ CHẤM THẦU (SOI THEO HSMT)")
-        st.dataframe(df_result, use_container_width=True)
+        df = pd.DataFrame(results)
 
-        # Tổng hợp
-        summary = (
-            df_result[df_result["Bắt buộc"] == "Có"]
+        st.subheader("📊 BẢNG CHẤM THẦU CHI TIẾT")
+        st.dataframe(df, use_container_width=True)
+
+        st.subheader("✅ KẾT LUẬN KỸ THUẬT")
+
+        ket_luan = (
+            df[df["Bắt buộc"] == "BẮT BUỘC (Đạt/Không đạt)"]
             .groupby("Nhà thầu")["Kết quả"]
-            .apply(lambda x: "ĐẠT" if "Không đạt" not in x.values else "KHÔNG ĐẠT")
+            .apply(lambda x: "ĐẠT" if "KHÔNG ĐẠT" not in x.values else "KHÔNG ĐẠT")
             .reset_index()
         )
-        summary.columns = ["Nhà thầu", "Kết luận sơ bộ"]
 
-        st.subheader("✅ KẾT LUẬN SƠ BỘ")
-        st.dataframe(summary, use_container_width=True)
-
-    else:
-        st.warning("⚠️ Cần upload HSMT, gán tiêu chí và upload HSDT để chấm thầu")
+        st.dataframe(ket_luan, use_container_width=True)
