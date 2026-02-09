@@ -48,7 +48,7 @@ def read_docx(file):
 
 st.divider()
 st.subheader("3️⃣ Nội dung trích xuất từ HSMT")
-
+if hsmt_files:
 hsmt_texts = []
 
 for hsmt_file in hsmt_files:
