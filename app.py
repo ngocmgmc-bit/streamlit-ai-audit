@@ -21,13 +21,17 @@ hsdt_files = st.file_uploader(
 st.divider()
 
 if hsmt_file and hsdt_files:
-    st.success("✅ Đã nhận đủ HSMT và HSDT")
-    st.write(f"📄 HSMT: **{hsmt_file.name}**")
-    st.write("📂 Danh sách HSDT:")
-    for f in hsdt_files:
-        st.write(f"– {f.name}")
+    st.success(f"✅ Đã nhận {len(hsmt_file)} file HSMT và {len(hsdt_files)} file HSDT")
+
+    st.markdown("### 📘 Danh sách HSMT")
+    for i, f in enumerate(hsmt_file, start=1):
+        st.write(f"{i}. {f.name}")
+
+    st.markdown("### 📕 Danh sách HSDT")
+    for i, f in enumerate(hsdt_files, start=1):
+        st.write(f"{i}. {f.name}")
 else:
-    st.warning("⚠️ Vui lòng upload đủ 1 HSMT và ít nhất 1 HSDT")
+    st.warning("⚠️ Vui lòng upload đủ ít nhất 1 HSMT và 1 HSDT")
 import pdfplumber
 from docx import Document
 import io
