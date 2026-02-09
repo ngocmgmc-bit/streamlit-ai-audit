@@ -49,11 +49,26 @@ def read_docx(file):
 st.divider()
 st.subheader("3️⃣ Nội dung trích xuất từ HSMT")
 
-if hsmt_file:
-    if hsmt_file.name.endswith(".pdf"):
-        hsmt_text = read_pdf(hsmt_file)
+hsmt_texts = []
+
+for hsmt_file in hsmt_files:
+    if hsmt_file.name.lower().endswith(".pdf"):
+        text = read_pdf(hsmt_file)
+    elif hsmt_file.name.lower().endswith(".docx"):
+        text = read_docx(hsmt_file)
     else:
-        hsmt_text = read_docx(hsmt_file)
+        text = ""
+
+    if text.strip():
+        hsmt_texts.append(f"===== FILE: {hsmt_file.name} =====\n{text}")
+
+full_hsmt_text = "\n\n".join(hsmt_texts)
+
+st.text_area(
+    "📄 Nội dung HSMT (đã trích xuất)",
+    full_hsmt_text,
+    height=400
+)
 
     st.text_area(
         "📄 Nội dung HSMT (đã trích xuất)",
