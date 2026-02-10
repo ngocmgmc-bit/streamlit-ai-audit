@@ -1,101 +1,105 @@
 import streamlit as st
 import pdfplumber
 import docx
-import tempfile
+import io
 import os
-from docx import Document
+from datetime import datetime
 import google.generativeai as genai
 
-# ================== CẤU HÌNH ==================
+# ================= CẤU HÌNH =================
 st.set_page_config(
-    page_title="CHẤM THẦU CHUYÊN GIA",
+    page_title="HỆ THỐNG CHẤM THẦU CHUYÊN GIA",
     layout="wide"
 )
 
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-MODEL_NAME = "models/gemini-1.5-pro"
+model = genai.GenerativeModel("gemini-1.5-pro")
 
-# ================== HÀM TIỆN ÍCH ==================
-def read_pdf(file):
-    text = ""
-    with pdfplumber.open(file) as pdf:
-        for page in pdf.pages:
-            text += page.extract_text() or ""
-    return text
-
-def read_docx(file):
-    doc = docx.Document(file)
-    return "\n".join(p.text for p in doc.paragraphs)
-
+# ================= HÀM TIỆN ÍCH =================
 def read_files(files):
-    full_text = ""
+    text = ""
     for f in files:
         if f.name.lower().endswith(".pdf"):
-            full_text += read_pdf(f)
+            with pdfplumber.open(f) as pdf:
+                for page in pdf.pages:
+                    text += page.extract_text() or ""
         elif f.name.lower().endswith(".docx"):
-            full_text += read_docx(f)
-    return full_text.strip()
+            doc = docx.Document(f)
+            for p in doc.paragraphs:
+                text += p.text + "\n"
+    return text.strip()
 
 def ai_call(prompt):
-    model = genai.GenerativeModel(MODEL_NAME)
-    response = model.generate_content(prompt)
-    return response.text
+    return model.generate_content(prompt).text
 
 def export_word(content):
-    doc = Document()
+    doc = docx.Document()
     doc.add_heading("BÁO CÁO ĐÁNH GIÁ HỒ SƠ DỰ THẦU", level=1)
-    doc.add_paragraph(content)
-    temp_path = tempfile.mktemp(suffix=".docx")
-    doc.save(temp_path)
-    return temp_path
 
-# ================== GIAO DIỆN ==================
-st.title("⚖️ HỆ THỐNG CHẤM THẦU CHUYÊN GIA")
-
-with st.sidebar:
-    st.header("📌 CHỌN CHỨC NĂNG")
-    mode = st.radio(
-        "",
-        ["AI CHẤM THẦU & XUẤT WORD"]
+    doc.add_paragraph(
+        "Căn cứ Luật Đấu thầu số 22/2023/QH15 và Thông tư 08/2022/TT-BKHĐT.\n"
     )
 
-# ================== CHỨC NĂNG CHẤM THẦU ==================
-if mode == "AI CHẤM THẦU & XUẤT WORD":
+    table = doc.add_table(rows=2, cols=2)
+    table.style = "Table Grid"
+    table.cell(0, 0).text = "Nội dung"
+    table.cell(0, 1).text = "Đánh giá"
 
-    col1, col2 = st.columns(2)
+    table.cell(1, 0).text = "Kết quả chấm thầu"
+    table.cell(1, 1).text = content
 
-    with col1:
-        st.subheader("📂 Upload HSMT (nhiều file)")
-        hsmt_files = st.file_uploader(
-            "",
-            type=["pdf", "docx"],
-            accept_multiple_files=True,
-            key="hsmt"
-        )
+    doc.add_paragraph(
+        f"\nNgày lập báo cáo: {datetime.now().strftime('%d/%m/%Y')}\n"
+        "TỔ CHUYÊN GIA ĐẤU THẦU"
+    )
 
-    with col2:
-        st.subheader("📂 Upload HSDT (1 nhà thầu – nhiều file)")
-        hsdt_files = st.file_uploader(
-            "",
-            type=["pdf", "docx"],
-            accept_multiple_files=True,
-            key="hsdt"
-        )
+    path = "/tmp/bao_cao_cham_thau.docx"
+    doc.save(path)
+    return path
 
-    if hsmt_files and hsdt_files:
-        if st.button("⚖️ AI CHẤM THẦU"):
-            with st.spinner("AI đang phân tích hồ sơ..."):
-                hsmt_text = read_files(hsmt_files)
-                hsdt_text = read_files(hsdt_files)
+# ================= GIAO DIỆN =================
+st.title("⚖️ HỆ THỐNG CHẤM THẦU CHUYÊN GIA")
 
-                prompt = f"""
-Bạn là chuyên gia đấu thầu theo Luật Đấu thầu Việt Nam và Thông tư 08/2022/TT-BKHĐT.
+st.markdown("### 📂 Upload HSMT (nhiều file)")
+hsmt_files = st.file_uploader(
+    "",
+    type=["pdf", "docx"],
+    accept_multiple_files=True,
+    key="hsmt"
+)
 
-NHIỆM VỤ:
-- Đánh giá HSDT so với HSMT
-- Kết luận đạt / không đạt
-- Nêu rõ lý do
-- Trình bày theo văn phong báo cáo thẩm định chính thức
+st.markdown("### 📂 Upload HSDT (1 nhà thầu – nhiều file)")
+hsdt_files = st.file_uploader(
+    "",
+    type=["pdf", "docx"],
+    accept_multiple_files=True,
+    key="hsdt"
+)
+
+st.markdown("---")
+
+# ================= CHẤM THẦU =================
+if hsmt_files and hsdt_files:
+    st.success("✅ Đã upload đầy đủ HSMT và HSDT")
+
+    if st.button("⚖️ CHẤM THẦU", use_container_width=True):
+        with st.spinner("AI đang chấm thầu theo Luật Đấu thầu & Thông tư 08..."):
+            hsmt_text = read_files(hsmt_files)
+            hsdt_text = read_files(hsdt_files)
+
+            prompt = f"""
+Bạn là TỔ CHUYÊN GIA ĐẤU THẦU.
+
+Hãy đánh giá HỒ SƠ DỰ THẦU theo đúng quy định:
+- Luật Đấu thầu Việt Nam
+- Thông tư 08/2022/TT-BKHĐT
+- Văn phong báo cáo thẩm định
+
+YÊU CẦU:
+1. Đánh giá sự đáp ứng HSDT so với HSMT
+2. Nêu rõ các nội dung đạt / không đạt
+3. Kết luận cuối cùng: ĐẠT hoặc KHÔNG ĐẠT
+4. Trình bày mạch lạc, có thể dùng trực tiếp trong báo cáo
 
 === HSMT ===
 {hsmt_text}
@@ -104,14 +108,18 @@ NHIỆM VỤ:
 {hsdt_text}
 """
 
-                result = ai_call(prompt)
-                st.success("✅ Chấm thầu hoàn tất")
-                st.text_area("📄 KẾT QUẢ", result, height=400)
+            result = ai_call(prompt)
 
-                word_path = export_word(result)
-                with open(word_path, "rb") as f:
-                    st.download_button(
-                        "⬇️ TẢI BÁO CÁO WORD",
-                        f,
-                        file_name="Bao_cao_cham_thau.docx"
-                    )
+            st.markdown("## 📄 KẾT QUẢ CHẤM THẦU")
+            st.text_area("", result, height=450)
+
+            word_path = export_word(result)
+            with open(word_path, "rb") as f:
+                st.download_button(
+                    "⬇️ TẢI BÁO CÁO WORD",
+                    f,
+                    file_name="Bao_cao_cham_thau.docx",
+                    use_container_width=True
+                )
+else:
+    st.info("⬆️ Vui lòng upload đầy đủ HSMT và HSDT để thực hiện chấm thầu")
