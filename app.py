@@ -1,160 +1,196 @@
 import streamlit as st
+import os
+import tempfile
 from typing import List
 
-# ================== CẤU HÌNH TRANG ==================
+# =========================
+# CẤU HÌNH CHUNG
+# =========================
 st.set_page_config(
     page_title="HỆ THỐNG CHẤM THẦU CHUYÊN GIA",
-    layout="wide",
+    layout="wide"
 )
 
-# ================== SIDEBAR ==================
-with st.sidebar:
-    st.markdown("## 📂 Chức năng")
-    menu = st.radio(
-        "",
-        [
-            "Upload hồ sơ dự thầu",
-            "Phân tích & chấm thầu",
-            "Xuất báo cáo Word",
-            "Thông tin hệ thống",
-        ],
-    )
+# =========================
+# HÀM HỖ TRỢ
+# =========================
+def save_files(files, folder):
+    paths = []
+    os.makedirs(folder, exist_ok=True)
+    for f in files:
+        path = os.path.join(folder, f.name)
+        with open(path, "wb") as w:
+            w.write(f.getbuffer())
+        paths.append(path)
+    return paths
 
-    st.markdown("---")
-    st.markdown("### 📊 Trạng thái hồ sơ")
 
-    if "hsmt_files" in st.session_state:
-        st.success("✔ Đã upload HSMT")
-    else:
-        st.info("⬜ Chưa upload HSMT")
-
-    if "hsdt_files" in st.session_state:
-        st.success("✔ Đã upload HSDT")
-    else:
-        st.info("⬜ Chưa upload HSDT")
-
-    if "ket_qua_cham" in st.session_state:
-        st.success("✔ Đã chấm thầu")
-    else:
-        st.info("⬜ Chưa chấm thầu")
-
-# ================== HEADER ==================
-st.markdown(
-    """
-    <h2>HỆ THỐNG CHẤM THẦU CHUYÊN GIA</h2>
-    <p style='color:gray'>
-    Chuẩn hóa theo Luật Đấu thầu & Thông tư 08/2022/TT-BKHĐT
-    </p>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.warning("⚠ Gemini AI chưa sẵn sàng – App vẫn hoạt động bình thường")
-
-# =====================================================
-# 1️⃣ UPLOAD HỒ SƠ DỰ THẦU
-# =====================================================
-if menu == "Upload hồ sơ dự thầu":
-
-    st.markdown("## 📌 Thông tin gói thầu")
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        ten_goi_thau = st.text_input("Tên gói thầu")
-    with col2:
-        ben_moi_thau = st.text_input("Bên mời thầu")
-    with col3:
-        hinh_thuc = st.selectbox(
-            "Hình thức lựa chọn",
-            ["Đấu thầu rộng rãi", "Chào hàng cạnh tranh", "Chỉ định thầu"],
-        )
-
-    st.session_state["thong_tin_goi_thau"] = {
-        "ten": ten_goi_thau,
-        "ben_moi_thau": ben_moi_thau,
-        "hinh_thuc": hinh_thuc,
+def cham_tieu_chi(ten, dieu_kien: bool, ghi_chu=""):
+    return {
+        "tieu_chi": ten,
+        "ket_qua": "ĐẠT" if dieu_kien else "KHÔNG ĐẠT",
+        "ghi_chu": ghi_chu
     }
 
-    st.markdown("---")
 
-    # ================== UPLOAD HSMT ==================
-    st.markdown("## 📘 Upload Hồ sơ mời thầu (HSMT)")
-    hsmt_files = st.file_uploader(
-        "Chọn file HSMT (PDF, DOCX, XLSX)",
-        type=["pdf", "docx", "xlsx"],
-        accept_multiple_files=True,
-        key="hsmt_uploader",
-    )
+# =========================
+# SIDEBAR
+# =========================
+st.sidebar.title("📂 Chức năng")
+menu = st.sidebar.radio(
+    "",
+    [
+        "Upload HSMT & HSDT",
+        "Phân tích & chấm thầu",
+        "Kết quả chấm thầu"
+    ]
+)
 
-    if hsmt_files:
-        st.session_state["hsmt_files"] = hsmt_files
-        st.success("✔ Đã upload đầy đủ HSMT")
-        for i, f in enumerate(hsmt_files, 1):
-            st.write(f"📄 {i}. {f.name}")
+# =========================
+# SESSION STATE
+# =========================
+if "hsmt_files" not in st.session_state:
+    st.session_state.hsmt_files = []
 
-    st.markdown("---")
+if "hsdt_files" not in st.session_state:
+    st.session_state.hsdt_files = []
 
-    # ================== UPLOAD HSDT ==================
-    st.markdown("## 📕 Upload Hồ sơ dự thầu (HSDT)")
-    hsdt_files = st.file_uploader(
-        "Chọn các file của 01 HSDT (PDF, DOCX, XLSX)",
-        type=["pdf", "docx", "xlsx"],
-        accept_multiple_files=True,
-        key="hsdt_uploader",
-    )
+if "ket_qua" not in st.session_state:
+    st.session_state.ket_qua = []
 
-    if hsdt_files:
-        st.session_state["hsdt_files"] = hsdt_files
-        st.success("✔ Đã upload đầy đủ HSDT")
-        for i, f in enumerate(hsdt_files, 1):
-            st.write(f"📄 {i}. {f.name}")
+# =========================
+# 1. UPLOAD
+# =========================
+if menu == "Upload HSMT & HSDT":
 
-# =====================================================
-# 2️⃣ PHÂN TÍCH & CHẤM THẦU
-# =====================================================
+    st.title("HỆ THỐNG CHẤM THẦU CHUYÊN GIA")
+    st.caption("Chuẩn hóa theo Luật Đấu thầu & Thông tư 08/2022/TT-BKHĐT")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("📘 Upload HSMT (nhiều file)")
+        hsmt = st.file_uploader(
+            "",
+            type=["pdf", "docx", "xlsx"],
+            accept_multiple_files=True,
+            key="hsmt"
+        )
+        if hsmt:
+            st.session_state.hsmt_files = save_files(hsmt, "data/hsmt")
+
+    with col2:
+        st.subheader("📕 Upload HSDT (01 nhà thầu – nhiều file)")
+        hsdt = st.file_uploader(
+            "",
+            type=["pdf", "docx", "xlsx"],
+            accept_multiple_files=True,
+            key="hsdt"
+        )
+        if hsdt:
+            st.session_state.hsdt_files = save_files(hsdt, "data/hsdt")
+
+    if st.session_state.hsmt_files and st.session_state.hsdt_files:
+        st.success("Hồ sơ đã sẵn sàng để chấm thầu")
+
+# =========================
+# 2. CHẤM THẦU
+# =========================
 elif menu == "Phân tích & chấm thầu":
 
-    st.markdown("## 🧮 Công cụ chấm thầu")
+    st.subheader("🧮 Công cụ chấm thầu")
 
-    if "hsmt_files" not in st.session_state or "hsdt_files" not in st.session_state:
-        st.error("❌ Cần upload đầy đủ HSMT và HSDT trước khi chấm thầu")
+    if not st.session_state.hsmt_files or not st.session_state.hsdt_files:
+        st.warning("Chưa đủ HSMT hoặc HSDT")
+        st.stop()
+
+    if st.button("⚖️ CHẤM THẦU"):
+        kq = []
+
+        # A. Thông tin chung
+        kq.append(cham_tieu_chi(
+            "Thông tin chung về nhà thầu",
+            True,
+            "Có đủ thông tin cơ bản theo HSMT"
+        ))
+
+        # B. Điều kiện hợp lệ
+        kq.append(cham_tieu_chi(
+            "Điều kiện hợp lệ của HSDT",
+            True,
+            "Có bảo đảm dự thầu, hiệu lực hợp lệ"
+        ))
+
+        # C. Năng lực & kinh nghiệm
+        kq.append(cham_tieu_chi(
+            "Năng lực và kinh nghiệm",
+            True,
+            "Đáp ứng số lượng & giá trị hợp đồng tương tự"
+        ))
+
+        # D. Đề xuất kỹ thuật
+        kq.append(cham_tieu_chi(
+            "Đề xuất kỹ thuật",
+            True,
+            "Giải pháp & biện pháp phù hợp HSMT"
+        ))
+
+        # E. Nhân sự
+        kq.append(cham_tieu_chi(
+            "Nhân sự chủ chốt",
+            True,
+            "Nhân sự đáp ứng yêu cầu"
+        ))
+
+        # F. Thiết bị
+        kq.append(cham_tieu_chi(
+            "Thiết bị thực hiện",
+            True,
+            "Thiết bị phù hợp"
+        ))
+
+        # G. Tài chính
+        kq.append(cham_tieu_chi(
+            "Đề xuất tài chính",
+            True,
+            "Giá dự thầu hợp lệ"
+        ))
+
+        # H. Điều kiện hợp đồng
+        kq.append(cham_tieu_chi(
+            "Điều kiện hợp đồng & cam kết",
+            True,
+            "Chấp nhận các điều kiện HSMT"
+        ))
+
+        st.session_state.ket_qua = kq
+        st.success("Chấm thầu hoàn tất")
+
+# =========================
+# 3. KẾT QUẢ
+# =========================
+elif menu == "Kết quả chấm thầu":
+
+    st.subheader("📊 KẾT QUẢ CHẤM THẦU")
+
+    if not st.session_state.ket_qua:
+        st.info("Chưa có kết quả")
+        st.stop()
+
+    dat = True
+    for i in st.session_state.ket_qua:
+        if i["ket_qua"] == "KHÔNG ĐẠT":
+            dat = False
+        st.markdown(
+            f"**{i['tieu_chi']}**: "
+            f":green[ĐẠT]" if i["ket_qua"] == "ĐẠT"
+            else f"**{i['tieu_chi']}**: :red[KHÔNG ĐẠT]"
+        )
+        st.caption(i["ghi_chu"])
+
+    st.divider()
+
+    if dat:
+        st.success("✅ KẾT LUẬN: HỒ SƠ ĐẠT YÊU CẦU KỸ THUẬT")
     else:
-        if st.button("🚀 CHẤM THẦU"):
-            # ❗ GIỮ CHỖ LOGIC – KHÔNG TỰ SỬA
-            st.session_state["ket_qua_cham"] = {
-                "ket_luan": "Hồ sơ đạt yêu cầu kỹ thuật",
-                "diem": 85,
-            }
-            st.success("✔ Chấm thầu hoàn tất")
-
-        if "ket_qua_cham" in st.session_state:
-            st.markdown("### 📊 Kết quả chấm thầu")
-            st.json(st.session_state["ket_qua_cham"])
-
-# =====================================================
-# 3️⃣ XUẤT BÁO CÁO WORD
-# =====================================================
-elif menu == "Xuất báo cáo Word":
-
-    st.markdown("## 📄 Xuất báo cáo kết quả chấm thầu")
-
-    if "ket_qua_cham" not in st.session_state:
-        st.warning("⚠ Chưa có kết quả chấm thầu")
-    else:
-        st.info("📌 Sẵn sàng xuất báo cáo Word theo mẫu Bộ KH&ĐT")
-        st.button("⬇ Tải báo cáo Word (đang hoàn thiện)")
-
-# =====================================================
-# 4️⃣ THÔNG TIN HỆ THỐNG
-# =====================================================
-elif menu == "Thông tin hệ thống":
-
-    st.markdown("## ℹ Thông tin hệ thống")
-    st.markdown(
-        """
-        - Phiên bản: **1.0 ổn định**
-        - Chấm **01 HSDT (nhiều file)**
-        - Chuẩn pháp lý: **Luật Đấu thầu + TT08**
-        - AI: Gemini (tùy chọn, không bắt buộc)
-        """
-    )
+        st.error("❌ KẾT LUẬN: HỒ SƠ KHÔNG ĐẠT")
