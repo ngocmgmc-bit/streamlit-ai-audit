@@ -2,101 +2,173 @@ import streamlit as st
 import pdfplumber
 import google.generativeai as genai
 import os
+from docx import Document
+from datetime import datetime
 
 # =========================
-# CẤU HÌNH TRANG
+# CẤU HÌNH
 # =========================
 st.set_page_config(
-    page_title="CHẤM THẦU CHUYÊN GIA",
+    page_title="CHẤM THẦU – TỔ CHUYÊN GIA",
     layout="wide"
 )
 
-st.title("📑 CHẤM THẦU CHUYÊN GIA (AI)")
-st.caption("Phiên bản chuyên gia – phân tích HSMT & chấm HSDT")
+st.title("📑 HỆ THỐNG CHẤM THẦU – TỔ CHUYÊN GIA")
 
 # =========================
-# CẤU HÌNH GEMINI
+# API KEY
 # =========================
 API_KEY = os.getenv("GEMINI_API_KEY")
-
 if not API_KEY:
-    st.error("❌ Chưa cấu hình GEMINI_API_KEY trong Streamlit Secrets")
+    st.error("❌ Chưa cấu hình GEMINI_API_KEY")
     st.stop()
 
 genai.configure(api_key=API_KEY)
+model = genai.GenerativeModel("gemini-1.5-pro")
 
 # =========================
-# HÀM ĐỌC PDF
+# HÀM DÙNG CHUNG
 # =========================
-def extract_text_from_pdf(uploaded_file):
+def read_pdf(file):
     text = ""
-    with pdfplumber.open(uploaded_file) as pdf:
-        for page in pdf.pages:
-            if page.extract_text():
-                text += page.extract_text() + "\n"
+    with pdfplumber.open(file) as pdf:
+        for p in pdf.pages:
+            if p.extract_text():
+                text += p.extract_text() + "\n"
     return text.strip()
 
-# =========================
-# HÀM GỌI GEMINI
-# =========================
-def call_gemini(prompt):
-    try:
-        model = genai.GenerativeModel("gemini-1.5-pro")
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"[LỖI AI] {str(e)}"
+def ai(prompt):
+    return model.generate_content(prompt).text
+
+def export_word(content):
+    doc = Document()
+    doc.add_heading("BÁO CÁO ĐÁNH GIÁ HỒ SƠ DỰ THẦU", level=1)
+
+    doc.add_paragraph(
+        "Căn cứ Luật Đấu thầu số 22/2023/QH15 và "
+        "Thông tư số 08/2022/TT-BKHĐT của Bộ Kế hoạch và Đầu tư.\n"
+    )
+
+    for line in content.split("\n"):
+        doc.add_paragraph(line)
+
+    filename = f"Bao_cao_cham_thau_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
+    doc.save(filename)
+    return filename
 
 # =========================
-# GIAO DIỆN
+# SIDEBAR
 # =========================
-tab1, tab2 = st.tabs(["📥 Upload HSMT", "📥 Upload HSDT"])
+tool = st.sidebar.radio(
+    "🧠 CHỌN CHỨC NĂNG",
+    [
+        "📌 Trích xuất tiêu chí HSMT",
+        "⚖️ Chấm HSDT (01 nhà thầu)",
+        "🔍 AI rà soát & xuất báo cáo Word"
+    ]
+)
 
-# -------- TAB HSMT --------
-with tab1:
-    st.subheader("📄 Upload Hồ sơ mời thầu (HSMT)")
-    hsmt_file = st.file_uploader("Chọn file HSMT (PDF)", type=["pdf"])
+# =========================
+# UPLOAD HSMT – NHIỀU FILE
+# =========================
+st.subheader("📥 Upload HSMT (có thể nhiều file)")
+hsmt_files = st.file_uploader(
+    "HSMT (PDF)",
+    type="pdf",
+    accept_multiple_files=True
+)
 
-    if hsmt_file:
-        with st.spinner("Đang đọc HSMT..."):
-            hsmt_text = extract_text_from_pdf(hsmt_file)
-            st.success("✅ Đã đọc HSMT")
+hsmt_text = ""
+if hsmt_files:
+    for f in hsmt_files:
+        hsmt_text += f"\n--- HSMT: {f.name} ---\n"
+        hsmt_text += read_pdf(f)
+    st.success(f"✅ Đã nạp {len(hsmt_files)} file HSMT")
 
-        if st.button("🤖 AI trích xuất tiêu chí chấm thầu"):
-            prompt = f"""
-Bạn là chuyên gia đấu thầu.
-Từ nội dung HSMT sau, hãy trích xuất:
-- Tiêu chí kỹ thuật
-- Tiêu chí tài chính
-- Điều kiện đạt / không đạt
-- Thang điểm (nếu có)
+# =========================
+# UPLOAD HSDT – 1 NHÀ THẦU, NHIỀU FILE
+# =========================
+st.subheader("📥 Upload HSDT (01 nhà thầu – nhiều file)")
+hsdt_files = st.file_uploader(
+    "HSDT (PDF)",
+    type="pdf",
+    accept_multiple_files=True
+)
+
+hsdt_text = ""
+if hsdt_files:
+    for f in hsdt_files:
+        hsdt_text += f"\n--- HSDT: {f.name} ---\n"
+        hsdt_text += read_pdf(f)
+    st.success(f"✅ Đã nạp {len(hsdt_files)} file HSDT")
+
+# =========================
+# TOOL 1 – TRÍCH XUẤT HSMT
+# =========================
+if tool == "📌 Trích xuất tiêu chí HSMT":
+    if st.button("🤖 AI trích xuất"):
+        prompt = f"""
+Trích xuất tiêu chí đánh giá theo Thông tư 08/2022/TT-BKHĐT:
+- Năng lực, kinh nghiệm
+- Kỹ thuật
+- Tài chính
+- Điều kiện loại trực tiếp
+- Nguyên tắc đánh giá đạt/không đạt
 
 HSMT:
 {hsmt_text}
 """
-            with st.spinner("AI đang phân tích..."):
-                result = call_gemini(prompt)
-                st.text_area("📌 Kết quả AI", result, height=400)
+        st.text_area("📊 KẾT QUẢ", ai(prompt), height=450)
 
-# -------- TAB HSDT --------
-with tab2:
-    st.subheader("📄 Upload Hồ sơ dự thầu (HSDT)")
-    hsdt_file = st.file_uploader("Chọn file HSDT (PDF)", type=["pdf"])
+# =========================
+# TOOL 2 – CHẤM HSDT
+# =========================
+if tool == "⚖️ Chấm HSDT (01 nhà thầu)":
+    if st.button("⚖️ AI CHẤM THẦU"):
+        prompt = f"""
+Bạn là TỔ CHUYÊN GIA.
 
-    if hsdt_file:
-        with st.spinner("Đang đọc HSDT..."):
-            hsdt_text = extract_text_from_pdf(hsdt_file)
-            st.success("✅ Đã đọc HSDT")
+Hãy đánh giá HSDT theo HSMT, đúng Thông tư 08/2022/TT-BKHĐT:
+1. Đánh giá năng lực & kinh nghiệm
+2. Đánh giá kỹ thuật
+3. Đánh giá tài chính
+4. Kết luận đạt/không đạt
+5. Kiến nghị
 
-        if st.button("⚖️ AI đánh giá HSDT theo HSMT"):
-            prompt = f"""
-Bạn là chuyên gia chấm thầu.
-Hãy đánh giá HSDT dưới đây dựa trên các tiêu chí trong HSMT.
-Kết luận rõ: ĐẠT / KHÔNG ĐẠT và nhận xét chi tiết.
+HSMT:
+{hsmt_text}
 
 HSDT:
 {hsdt_text}
 """
-            with st.spinner("AI đang chấm thầu..."):
-                result = call_gemini(prompt)
-                st.text_area("📊 Kết quả chấm thầu", result, height=400)
+        st.session_state["ket_qua"] = ai(prompt)
+        st.text_area("📋 KẾT QUẢ CHẤM", st.session_state["ket_qua"], height=450)
+
+# =========================
+# TOOL 3 – RÀ SOÁT + WORD
+# =========================
+if tool == "🔍 AI rà soát & xuất báo cáo Word":
+    if st.button("🔍 AI RÀ SOÁT & XUẤT WORD"):
+        prompt = f"""
+Rà soát HSDT theo HSMT và pháp luật đấu thầu:
+- Thiếu / sai tài liệu?
+- Nguy cơ bị loại?
+- Rủi ro pháp lý?
+- Kết luận cuối cùng cho Tổ chuyên gia
+
+HSMT:
+{hsmt_text}
+
+HSDT:
+{hsdt_text}
+"""
+        report = ai(prompt)
+        filename = export_word(report)
+
+        st.success("✅ Đã tạo báo cáo Word")
+        with open(filename, "rb") as f:
+            st.download_button(
+                "📄 Tải báo cáo Word",
+                f,
+                file_name=filename
+            )
