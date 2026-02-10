@@ -1,5 +1,5 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 import traceback
 from typing import List
 
@@ -15,34 +15,21 @@ st.title("⚖️ HỆ THỐNG CHẤM THẦU CHUYÊN GIA")
 st.caption("Chuẩn hóa theo Luật Đấu thầu & Thông tư 08/2022/TT-BKHĐT")
 
 # =========================
-# 2. KẾT NỐI GEMINI (ỔN ĐỊNH STREAMLIT CLOUD)
+# 2. KẾT NỐI GEMINI API MỚI (BẮT BUỘC)
 # =========================
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
-MODEL_NAME = "models/gemini-1.0-pro"  # ✅ MODEL CHẠY ỔN ĐỊNH
+MODEL = "gemini-1.5-flash"  # model ĐANG ĐƯỢC GOOGLE HỖ TRỢ
 
 def ai_call(prompt: str) -> str:
     try:
-        model = genai.GenerativeModel(MODEL_NAME)
-        response = model.generate_content(prompt)
-
-        if hasattr(response, "text") and response.text:
-            return response.text
-
-        if hasattr(response, "parts"):
-            return "\n".join(
-                [p.text for p in response.parts if hasattr(p, "text")]
-            )
-
-        return "❌ AI không trả về nội dung."
-
-    except Exception as e:
-        return (
-            "❌ LỖI AI\n\n"
-            + str(e)
-            + "\n\n"
-            + traceback.format_exc()
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=prompt
         )
+        return response.text
+    except Exception as e:
+        return "❌ LỖI AI\n\n" + str(e) + "\n\n" + traceback.format_exc()
 
 # =========================
 # 3. UPLOAD HỒ SƠ
@@ -78,42 +65,28 @@ st.divider()
 st.subheader("⚙️ 2. Công cụ chấm thầu")
 
 def build_prompt(hsmt_files: List, hsdt_files: List) -> str:
-    hsmt_names = ", ".join([f.name for f in hsmt_files])
-    hsdt_names = ", ".join([f.name for f in hsdt_files])
-
     return f"""
-Bạn là CHUYÊN GIA ĐẤU THẦU cấp Bộ.
+Bạn là chuyên gia đấu thầu cấp Bộ.
 
-NHIỆM VỤ:
-- Đánh giá 01 HSDT (gồm nhiều file)
-- Đối chiếu với HSMT
-- Tuân thủ:
-  + Luật Đấu thầu Việt Nam
-  + Thông tư 08/2022/TT-BKHĐT
+HSMT: {', '.join(f.name for f in hsmt_files)}
+HSDT: {', '.join(f.name for f in hsdt_files)}
 
-DỮ LIỆU:
-- HSMT: {hsmt_names}
-- HSDT: {hsdt_names}
-
-YÊU CẦU:
-1. Bảng đánh giá tính hợp lệ
-2. Bảng đáp ứng kỹ thuật (Đạt / Không đạt)
-3. Các điểm chưa phù hợp
-4. Kết luận sơ bộ
-
-TRÌNH BÀY CHUẨN – RÕ – THEO MẪU BỘ KHĐT
+Yêu cầu:
+- Đánh giá tính hợp lệ
+- Đánh giá kỹ thuật (Đạt / Không đạt)
+- Chỉ rõ điểm không phù hợp
+- Kết luận theo Luật Đấu thầu & TT08
 """
 
 # =========================
-# 5. NÚT CHẤM THẦU
+# 5. CHẤM THẦU
 # =========================
 if st.button("⚖️ CHẤM THẦU", use_container_width=True):
     if not hsmt_files or not hsdt_files:
-        st.error("❌ Thiếu HSMT hoặc HSDT")
+        st.error("❌ Thiếu hồ sơ")
     else:
-        with st.spinner("🔍 AI đang chấm thầu..."):
-            prompt = build_prompt(hsmt_files, hsdt_files)
-            result = ai_call(prompt)
+        with st.spinner("AI đang chấm thầu..."):
+            result = ai_call(build_prompt(hsmt_files, hsdt_files))
 
         st.subheader("📑 KẾT QUẢ CHẤM THẦU")
         st.markdown(result)
@@ -122,8 +95,7 @@ if st.button("⚖️ CHẤM THẦU", use_container_width=True):
 # 6. GHI CHÚ
 # =========================
 st.info("""
-🔒 Lưu ý:
-- Hệ thống chấm 01 HSDT (nhiều file)
+- Chấm 01 HSDT (nhiều file)
 - Logic chấm không tự sửa
-- Có thể mở rộng xuất Word/PDF theo mẫu Bộ KHĐT
+- Sẵn sàng xuất Word/PDF theo mẫu Bộ KHĐT
 """)
