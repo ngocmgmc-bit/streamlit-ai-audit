@@ -1,12 +1,12 @@
 import streamlit as st
 import os
-import google.generativeai as genai
+from google import genai
 import PyPDF2
 import docx
 
-# ==============================
+# =============================
 # CẤU HÌNH TRANG
-# ==============================
+# =============================
 st.set_page_config(
     page_title="HỆ THỐNG CHẤM THẦU CHUYÊN GIA",
     layout="wide"
@@ -15,26 +15,26 @@ st.set_page_config(
 st.title("HỆ THỐNG CHẤM THẦU CHUYÊN GIA")
 st.caption("Chuẩn hóa theo Luật Đấu thầu & Thông tư 08/2022/TT-BKHĐT")
 
-# ==============================
-# KẾT NỐI GEMINI (ỔN ĐỊNH V1BETA)
-# ==============================
+# =============================
+# KẾT NỐI GEMINI API v1
+# =============================
 try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-pro")
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
     AI_READY = True
 except Exception as e:
     AI_READY = False
     st.error("Không kết nối được Gemini API.")
 
-# ==============================
+# =============================
 # HÀM ĐỌC FILE
-# ==============================
+# =============================
 def extract_text_from_pdf(file):
     reader = PyPDF2.PdfReader(file)
     text = ""
     for page in reader.pages:
-        if page.extract_text():
-            text += page.extract_text() + "\n"
+        content = page.extract_text()
+        if content:
+            text += content + "\n"
     return text
 
 def extract_text_from_docx(file):
@@ -50,9 +50,9 @@ def read_uploaded_files(uploaded_files):
             combined_text += extract_text_from_docx(file)
     return combined_text
 
-# ==============================
+# =============================
 # GIAO DIỆN UPLOAD
-# ==============================
+# =============================
 col1, col2 = st.columns(2)
 
 with col1:
@@ -71,9 +71,9 @@ with col2:
         accept_multiple_files=True
     )
 
-# ==============================
-# CHẤM THẦU
-# ==============================
+# =============================
+# CHẤM THẦU CHUYÊN SÂU
+# =============================
 if st.button("CHẤM THẦU CHUYÊN SÂU"):
 
     if not AI_READY:
@@ -83,37 +83,48 @@ if st.button("CHẤM THẦU CHUYÊN SÂU"):
         st.warning("Vui lòng upload đầy đủ HSMT và HSDT.")
         st.stop()
 
-    with st.spinner("Đang phân tích và đối chiếu chi tiết..."):
+    with st.spinner("AI đang phân tích đối chiếu chi tiết từng tiêu chí..."):
 
         hsmt_text = read_uploaded_files(hsmt_files)
         hsdt_text = read_uploaded_files(hsdt_files)
 
         prompt = f"""
-Bạn là chuyên gia kiểm toán đấu thầu cao cấp.
+Bạn là chuyên gia kiểm toán đấu thầu cấp cao.
 
-Nhiệm vụ:
-1. Trích xuất toàn bộ tiêu chí, tiêu chuẩn đánh giá từ HSMT.
-2. Đối chiếu từng tiêu chí với HSDT.
-3. Không được bỏ sót.
-4. Trình bày dạng bảng gồm:
-   - Tiêu chí HSMT
-   - Nội dung HSDT tương ứng
-   - Đánh giá: Đạt / Không đạt / Thiếu / Cần làm rõ
-   - Trích dẫn đối chiếu cụ thể
+NHIỆM VỤ BẮT BUỘC:
+
+1. Trích xuất TOÀN BỘ tiêu chí, tiêu chuẩn, yêu cầu kỹ thuật từ HSMT.
+2. Đối chiếu CHI TIẾT từng tiêu chí với nội dung tương ứng trong HSDT.
+3. Không được bỏ sót bất kỳ tiêu chí nào.
+4. Không tự suy đoán.
+5. Nếu không tìm thấy → ghi rõ "KHÔNG TÌM THẤY TRONG HSDT".
+6. Chỉ đánh giá:
+   - ĐẠT
+   - KHÔNG ĐẠT
+   - THIẾU
+   - CẦN LÀM RÕ
+
+Trình bày dạng bảng gồm:
+
+| STT | Tiêu chí HSMT | Trích dẫn HSDT đối chiếu | Đánh giá | Nhận định chuyên gia |
 
 ===== HSMT =====
-{hsmt_text[:25000]}
+{hsmt_text[:40000]}
 
 ===== HSDT =====
-{hsdt_text[:25000]}
+{hsdt_text[:40000]}
 """
 
         try:
-            response = model.generate_content(prompt)
-            result = response.text
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt
+            )
 
             st.success("Hoàn tất chấm thầu.")
-            st.markdown(result)
+            st.markdown(response.text)
 
+        except Exception as e:
+            st.error(f"Lỗi khi gọi AI: {e}")
         except Exception as e:
             st.error(f"Lỗi khi gọi AI: {e}")
