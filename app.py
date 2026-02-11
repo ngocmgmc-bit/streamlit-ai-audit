@@ -1,149 +1,106 @@
 import streamlit as st
 import os
-import PyPDF2
-from docx import Document
-import pandas as pd
 import tempfile
+from PyPDF2 import PdfReader
+from docx import Document
+import google.generativeai as genai
 
-st.set_page_config(page_title="HỆ THỐNG CHẤM THẦU CHUYÊN GIA", layout="wide")
+# ================== CẤU HÌNH ==================
+st.set_page_config(layout="wide")
 
-# =========================
-# HÀM ĐỌC FILE
-# =========================
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    AI_READY = True
+except:
+    AI_READY = False
 
-def read_pdf(file_path):
+# ================== HÀM ĐỌC FILE ==================
+def read_pdf(file):
+    reader = PdfReader(file)
     text = ""
-    with open(file_path, "rb") as f:
-        reader = PyPDF2.PdfReader(f)
-        for page in reader.pages:
-            text += page.extract_text() or ""
+    for page in reader.pages:
+        text += page.extract_text() + "\n"
     return text
 
-
-def read_docx(file_path):
-    doc = Document(file_path)
+def read_docx(file):
+    doc = Document(file)
     return "\n".join([p.text for p in doc.paragraphs])
 
-
-def read_files(uploaded_files):
+def extract_text(uploaded_files):
     full_text = ""
     for file in uploaded_files:
-        suffix = file.name.split(".")[-1].lower()
-        with tempfile.NamedTemporaryFile(delete=False, suffix="."+suffix) as tmp:
-            tmp.write(file.read())
-            tmp_path = tmp.name
-
-        if suffix == "pdf":
-            full_text += read_pdf(tmp_path)
-        elif suffix == "docx":
-            full_text += read_docx(tmp_path)
-
-        os.remove(tmp_path)
-
+        if file.name.endswith(".pdf"):
+            full_text += read_pdf(file)
+        elif file.name.endswith(".docx"):
+            full_text += read_docx(file)
     return full_text
 
 
-# =========================
-# GIAO DIỆN
-# =========================
+# ================== PROMPT CHUYÊN GIA ==================
+AUDIT_PROMPT = """
+Bạn là chuyên gia kiểm toán đấu thầu cấp cao...
 
-st.title("⚖️ HỆ THỐNG CHẤM THẦU CHUYÊN GIA")
+(giữ nguyên nội dung prompt phần trên tôi đã cung cấp)
+"""
+
+
+# ================== GIAO DIỆN ==================
+st.title("HỆ THỐNG CHẤM THẦU CHUYÊN GIA")
 st.caption("Chuẩn hóa theo Luật Đấu thầu & Thông tư 08/2022/TT-BKHĐT")
 
-tab1, tab2 = st.tabs(["📂 Upload hồ sơ", "🧮 Phân tích & Chấm thầu"])
+if not AI_READY:
+    st.warning("Gemini AI chưa sẵn sàng – App vẫn hoạt động bình thường")
 
-# =========================
-# TAB UPLOAD
-# =========================
+# ================== UPLOAD ==================
+col1, col2 = st.columns(2)
 
-with tab1:
+with col1:
+    st.subheader("Upload HSMT (nhiều file)")
+    hsmt_files = st.file_uploader(
+        "Chọn file HSMT",
+        accept_multiple_files=True,
+        type=["pdf", "docx"]
+    )
 
-    col1, col2 = st.columns(2)
+with col2:
+    st.subheader("Upload HSDT (1 nhà thầu – nhiều file)")
+    hsdt_files = st.file_uploader(
+        "Chọn file HSDT",
+        accept_multiple_files=True,
+        type=["pdf", "docx"]
+    )
 
-    with col1:
-        st.subheader("📁 Upload HSMT (nhiều file)")
-        hsmt_files = st.file_uploader(
-            "Chọn file HSMT",
-            type=["pdf", "docx"],
-            accept_multiple_files=True,
-            key="hsmt"
-        )
+# ================== CHẤM THẦU ==================
+if hsmt_files and hsdt_files:
 
-    with col2:
-        st.subheader("📁 Upload HSDT (1 nhà thầu – nhiều file)")
-        hsdt_files = st.file_uploader(
-            "Chọn file HSDT",
-            type=["pdf", "docx"],
-            accept_multiple_files=True,
-            key="hsdt"
-        )
+    if st.button("CHẤM THẦU CHUYÊN SÂU"):
 
-# =========================
-# TAB CHẤM THẦU
-# =========================
+        with st.spinner("AI đang đối chiếu từng tiêu chí..."):
 
-with tab2:
+            hsmt_text = extract_text(hsmt_files)
+            hsdt_text = extract_text(hsdt_files)
 
-    st.subheader("🧮 Công cụ chấm thầu")
+            full_prompt = AUDIT_PROMPT + f"""
 
-    if not hsmt_files or not hsdt_files:
-        st.warning("Vui lòng upload đầy đủ HSMT và HSDT ở tab Upload.")
-        st.stop()
+=== HỒ SƠ MỜI THẦU ===
+{hsmt_text}
 
-    if st.button("⚖️ THỰC HIỆN CHẤM THẦU"):
+=== HỒ SƠ DỰ THẦU ===
+{hsdt_text}
+"""
 
-        with st.spinner("Đang phân tích hồ sơ..."):
+            try:
+                response = model.generate_content(full_prompt)
+                result = response.text
 
-            hsmt_text = read_files(hsmt_files)
-            hsdt_text = read_files(hsdt_files)
+                st.success("Đối chiếu hoàn tất")
 
-            # =========================
-            # DANH SÁCH TIÊU CHÍ
-            # =========================
+                st.markdown("## KẾT QUẢ ĐỐI CHIẾU CHI TIẾT")
+                st.markdown(result)
 
-            tieu_chi = [
-                "Thông tin chung",
-                "Điều kiện hợp lệ",
-                "Năng lực và kinh nghiệm",
-                "Đề xuất kỹ thuật",
-                "Nhân sự chủ chốt",
-                "Thiết bị",
-                "Tiến độ thực hiện",
-                "Đề xuất tài chính",
-                "Điều kiện hợp đồng"
-            ]
+            except Exception as e:
+                st.error("Lỗi AI: " + str(e))
 
-            ket_qua = []
-
-            for i, tc in enumerate(tieu_chi, 1):
-
-                yeu_cau = tc.lower() in hsmt_text.lower()
-                co_noi_dung = tc.lower() in hsdt_text.lower()
-
-                if yeu_cau and co_noi_dung:
-                    ket_luan = "ĐẠT"
-                    doi_chieu = "Có nội dung trong HSDT phù hợp tiêu chí HSMT"
-                else:
-                    ket_luan = "KHÔNG ĐẠT"
-                    doi_chieu = "Không tìm thấy nội dung phù hợp hoặc thiếu nội dung"
-
-                ket_qua.append({
-                    "STT": i,
-                    "Tiêu chí": tc,
-                    "Yêu cầu có trong HSMT": "Có" if yeu_cau else "Không rõ",
-                    "Nội dung có trong HSDT": "Có" if co_noi_dung else "Không",
-                    "Đối chiếu": doi_chieu,
-                    "Kết luận": ket_luan
-                })
-
-            df = pd.DataFrame(ket_qua)
-
-            st.success("✅ Hoàn tất phân tích & đối chiếu")
-
-            st.subheader("📊 BẢNG ĐỐI CHIẾU CHI TIẾT")
-            st.dataframe(df, use_container_width=True)
-
-            if (df["Kết luận"] == "KHÔNG ĐẠT").any():
-                st.error("❌ KẾT LUẬN CHUNG: KHÔNG ĐẠT")
-            else:
-                st.success("✅ KẾT LUẬN CHUNG: ĐẠT")
+else:
+    st.info("Vui lòng upload đầy đủ HSMT và HSDT để bắt đầu.")
