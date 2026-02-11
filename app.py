@@ -1,9 +1,8 @@
 import streamlit as st
 import os
-from google import genai
+import google.generativeai as genai
 import PyPDF2
 import docx
-from io import BytesIO
 
 # ==============================
 # CẤU HÌNH TRANG
@@ -17,19 +16,19 @@ st.title("HỆ THỐNG CHẤM THẦU CHUYÊN GIA")
 st.caption("Chuẩn hóa theo Luật Đấu thầu & Thông tư 08/2022/TT-BKHĐT")
 
 # ==============================
-# KHỞI TẠO GEMINI (SDK MỚI)
+# KẾT NỐI GEMINI (ỔN ĐỊNH V1BETA)
 # ==============================
 try:
-    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model = genai.GenerativeModel("gemini-pro")
     AI_READY = True
 except Exception as e:
     AI_READY = False
-    st.error("Không kết nối được Gemini API. Kiểm tra lại API KEY trong Secrets.")
+    st.error("Không kết nối được Gemini API.")
 
 # ==============================
 # HÀM ĐỌC FILE
 # ==============================
-
 def extract_text_from_pdf(file):
     reader = PyPDF2.PdfReader(file)
     text = ""
@@ -38,11 +37,9 @@ def extract_text_from_pdf(file):
             text += page.extract_text() + "\n"
     return text
 
-
 def extract_text_from_docx(file):
     doc = docx.Document(file)
     return "\n".join([p.text for p in doc.paragraphs])
-
 
 def read_uploaded_files(uploaded_files):
     combined_text = ""
@@ -53,11 +50,9 @@ def read_uploaded_files(uploaded_files):
             combined_text += extract_text_from_docx(file)
     return combined_text
 
-
 # ==============================
 # GIAO DIỆN UPLOAD
 # ==============================
-
 col1, col2 = st.columns(2)
 
 with col1:
@@ -77,9 +72,8 @@ with col2:
     )
 
 # ==============================
-# NÚT CHẤM THẦU
+# CHẤM THẦU
 # ==============================
-
 if st.button("CHẤM THẦU CHUYÊN SÂU"):
 
     if not AI_READY:
@@ -89,7 +83,7 @@ if st.button("CHẤM THẦU CHUYÊN SÂU"):
         st.warning("Vui lòng upload đầy đủ HSMT và HSDT.")
         st.stop()
 
-    with st.spinner("Đang phân tích và đối chiếu chi tiết từng tiêu chí..."):
+    with st.spinner("Đang phân tích và đối chiếu chi tiết..."):
 
         hsmt_text = read_uploaded_files(hsmt_files)
         hsdt_text = read_uploaded_files(hsdt_files)
@@ -99,28 +93,23 @@ Bạn là chuyên gia kiểm toán đấu thầu cao cấp.
 
 Nhiệm vụ:
 1. Trích xuất toàn bộ tiêu chí, tiêu chuẩn đánh giá từ HSMT.
-2. Đối chiếu từng tiêu chí với nội dung tương ứng trong HSDT.
-3. Không được bỏ sót tiêu chí nào.
-4. Phân tích chi tiết từng mục:
+2. Đối chiếu từng tiêu chí với HSDT.
+3. Không được bỏ sót.
+4. Trình bày dạng bảng gồm:
    - Tiêu chí HSMT
    - Nội dung HSDT tương ứng
    - Đánh giá: Đạt / Không đạt / Thiếu / Cần làm rõ
-   - Trích dẫn đoạn liên quan
-5. Trình bày dưới dạng bảng chi tiết rõ ràng.
+   - Trích dẫn đối chiếu cụ thể
 
-===== HỒ SƠ MỜI THẦU =====
-{hsmt_text[:30000]}
+===== HSMT =====
+{hsmt_text[:25000]}
 
-===== HỒ SƠ DỰ THẦU =====
-{hsdt_text[:30000]}
+===== HSDT =====
+{hsdt_text[:25000]}
 """
 
         try:
-            response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=prompt
-            )
-
+            response = model.generate_content(prompt)
             result = response.text
 
             st.success("Hoàn tất chấm thầu.")
