@@ -1,106 +1,130 @@
 import streamlit as st
 import os
-import tempfile
-from PyPDF2 import PdfReader
-from docx import Document
-import google.generativeai as genai
+from google import genai
+import PyPDF2
+import docx
+from io import BytesIO
 
-# ================== CẤU HÌNH ==================
-st.set_page_config(layout="wide")
+# ==============================
+# CẤU HÌNH TRANG
+# ==============================
+st.set_page_config(
+    page_title="HỆ THỐNG CHẤM THẦU CHUYÊN GIA",
+    layout="wide"
+)
 
-try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    AI_READY = True
-except:
-    AI_READY = False
-
-# ================== HÀM ĐỌC FILE ==================
-def read_pdf(file):
-    reader = PdfReader(file)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text() + "\n"
-    return text
-
-def read_docx(file):
-    doc = Document(file)
-    return "\n".join([p.text for p in doc.paragraphs])
-
-def extract_text(uploaded_files):
-    full_text = ""
-    for file in uploaded_files:
-        if file.name.endswith(".pdf"):
-            full_text += read_pdf(file)
-        elif file.name.endswith(".docx"):
-            full_text += read_docx(file)
-    return full_text
-
-
-# ================== PROMPT CHUYÊN GIA ==================
-AUDIT_PROMPT = """
-Bạn là chuyên gia kiểm toán đấu thầu cấp cao...
-
-(giữ nguyên nội dung prompt phần trên tôi đã cung cấp)
-"""
-
-
-# ================== GIAO DIỆN ==================
 st.title("HỆ THỐNG CHẤM THẦU CHUYÊN GIA")
 st.caption("Chuẩn hóa theo Luật Đấu thầu & Thông tư 08/2022/TT-BKHĐT")
 
-if not AI_READY:
-    st.warning("Gemini AI chưa sẵn sàng – App vẫn hoạt động bình thường")
+# ==============================
+# KHỞI TẠO GEMINI (SDK MỚI)
+# ==============================
+try:
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    AI_READY = True
+except Exception as e:
+    AI_READY = False
+    st.error("Không kết nối được Gemini API. Kiểm tra lại API KEY trong Secrets.")
 
-# ================== UPLOAD ==================
+# ==============================
+# HÀM ĐỌC FILE
+# ==============================
+
+def extract_text_from_pdf(file):
+    reader = PyPDF2.PdfReader(file)
+    text = ""
+    for page in reader.pages:
+        if page.extract_text():
+            text += page.extract_text() + "\n"
+    return text
+
+
+def extract_text_from_docx(file):
+    doc = docx.Document(file)
+    return "\n".join([p.text for p in doc.paragraphs])
+
+
+def read_uploaded_files(uploaded_files):
+    combined_text = ""
+    for file in uploaded_files:
+        if file.name.lower().endswith(".pdf"):
+            combined_text += extract_text_from_pdf(file)
+        elif file.name.lower().endswith(".docx"):
+            combined_text += extract_text_from_docx(file)
+    return combined_text
+
+
+# ==============================
+# GIAO DIỆN UPLOAD
+# ==============================
+
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Upload HSMT (nhiều file)")
     hsmt_files = st.file_uploader(
         "Chọn file HSMT",
-        accept_multiple_files=True,
-        type=["pdf", "docx"]
+        type=["pdf", "docx"],
+        accept_multiple_files=True
     )
 
 with col2:
     st.subheader("Upload HSDT (1 nhà thầu – nhiều file)")
     hsdt_files = st.file_uploader(
         "Chọn file HSDT",
-        accept_multiple_files=True,
-        type=["pdf", "docx"]
+        type=["pdf", "docx"],
+        accept_multiple_files=True
     )
 
-# ================== CHẤM THẦU ==================
-if hsmt_files and hsdt_files:
+# ==============================
+# NÚT CHẤM THẦU
+# ==============================
 
-    if st.button("CHẤM THẦU CHUYÊN SÂU"):
+if st.button("CHẤM THẦU CHUYÊN SÂU"):
 
-        with st.spinner("AI đang đối chiếu từng tiêu chí..."):
+    if not AI_READY:
+        st.stop()
 
-            hsmt_text = extract_text(hsmt_files)
-            hsdt_text = extract_text(hsdt_files)
+    if not hsmt_files or not hsdt_files:
+        st.warning("Vui lòng upload đầy đủ HSMT và HSDT.")
+        st.stop()
 
-            full_prompt = AUDIT_PROMPT + f"""
+    with st.spinner("Đang phân tích và đối chiếu chi tiết từng tiêu chí..."):
 
-=== HỒ SƠ MỜI THẦU ===
-{hsmt_text}
+        hsmt_text = read_uploaded_files(hsmt_files)
+        hsdt_text = read_uploaded_files(hsdt_files)
 
-=== HỒ SƠ DỰ THẦU ===
-{hsdt_text}
+        prompt = f"""
+Bạn là chuyên gia kiểm toán đấu thầu cao cấp.
+
+Nhiệm vụ:
+1. Trích xuất toàn bộ tiêu chí, tiêu chuẩn đánh giá từ HSMT.
+2. Đối chiếu từng tiêu chí với nội dung tương ứng trong HSDT.
+3. Không được bỏ sót tiêu chí nào.
+4. Phân tích chi tiết từng mục:
+   - Tiêu chí HSMT
+   - Nội dung HSDT tương ứng
+   - Đánh giá: Đạt / Không đạt / Thiếu / Cần làm rõ
+   - Trích dẫn đoạn liên quan
+5. Trình bày dưới dạng bảng chi tiết rõ ràng.
+
+===== HỒ SƠ MỜI THẦU =====
+{hsmt_text[:30000]}
+
+===== HỒ SƠ DỰ THẦU =====
+{hsdt_text[:30000]}
 """
 
-            try:
-                response = model.generate_content(full_prompt)
-                result = response.text
+        try:
+            response = client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt
+            )
 
-                st.success("Đối chiếu hoàn tất")
+            result = response.text
 
-                st.markdown("## KẾT QUẢ ĐỐI CHIẾU CHI TIẾT")
-                st.markdown(result)
+            st.success("Hoàn tất chấm thầu.")
+            st.markdown(result)
 
-            except Exception as e:
-                st.error("Lỗi AI: " + str(e))
-
-else:
-    st.info("Vui lòng upload đầy đủ HSMT và HSDT để bắt đầu.")
+        except Exception as e:
+            st.error(f"Lỗi khi gọi AI: {e}")
