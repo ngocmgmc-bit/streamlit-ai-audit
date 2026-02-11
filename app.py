@@ -1,196 +1,149 @@
 import streamlit as st
 import os
+import PyPDF2
+from docx import Document
+import pandas as pd
 import tempfile
-from typing import List
+
+st.set_page_config(page_title="HỆ THỐNG CHẤM THẦU CHUYÊN GIA", layout="wide")
 
 # =========================
-# CẤU HÌNH CHUNG
+# HÀM ĐỌC FILE
 # =========================
-st.set_page_config(
-    page_title="HỆ THỐNG CHẤM THẦU CHUYÊN GIA",
-    layout="wide"
-)
 
-# =========================
-# HÀM HỖ TRỢ
-# =========================
-def save_files(files, folder):
-    paths = []
-    os.makedirs(folder, exist_ok=True)
-    for f in files:
-        path = os.path.join(folder, f.name)
-        with open(path, "wb") as w:
-            w.write(f.getbuffer())
-        paths.append(path)
-    return paths
+def read_pdf(file_path):
+    text = ""
+    with open(file_path, "rb") as f:
+        reader = PyPDF2.PdfReader(f)
+        for page in reader.pages:
+            text += page.extract_text() or ""
+    return text
 
 
-def cham_tieu_chi(ten, dieu_kien: bool, ghi_chu=""):
-    return {
-        "tieu_chi": ten,
-        "ket_qua": "ĐẠT" if dieu_kien else "KHÔNG ĐẠT",
-        "ghi_chu": ghi_chu
-    }
+def read_docx(file_path):
+    doc = Document(file_path)
+    return "\n".join([p.text for p in doc.paragraphs])
 
 
-# =========================
-# SIDEBAR
-# =========================
-st.sidebar.title("📂 Chức năng")
-menu = st.sidebar.radio(
-    "",
-    [
-        "Upload HSMT & HSDT",
-        "Phân tích & chấm thầu",
-        "Kết quả chấm thầu"
-    ]
-)
+def read_files(uploaded_files):
+    full_text = ""
+    for file in uploaded_files:
+        suffix = file.name.split(".")[-1].lower()
+        with tempfile.NamedTemporaryFile(delete=False, suffix="."+suffix) as tmp:
+            tmp.write(file.read())
+            tmp_path = tmp.name
+
+        if suffix == "pdf":
+            full_text += read_pdf(tmp_path)
+        elif suffix == "docx":
+            full_text += read_docx(tmp_path)
+
+        os.remove(tmp_path)
+
+    return full_text
+
 
 # =========================
-# SESSION STATE
+# GIAO DIỆN
 # =========================
-if "hsmt_files" not in st.session_state:
-    st.session_state.hsmt_files = []
 
-if "hsdt_files" not in st.session_state:
-    st.session_state.hsdt_files = []
+st.title("⚖️ HỆ THỐNG CHẤM THẦU CHUYÊN GIA")
+st.caption("Chuẩn hóa theo Luật Đấu thầu & Thông tư 08/2022/TT-BKHĐT")
 
-if "ket_qua" not in st.session_state:
-    st.session_state.ket_qua = []
+tab1, tab2 = st.tabs(["📂 Upload hồ sơ", "🧮 Phân tích & Chấm thầu"])
 
 # =========================
-# 1. UPLOAD
+# TAB UPLOAD
 # =========================
-if menu == "Upload HSMT & HSDT":
 
-    st.title("HỆ THỐNG CHẤM THẦU CHUYÊN GIA")
-    st.caption("Chuẩn hóa theo Luật Đấu thầu & Thông tư 08/2022/TT-BKHĐT")
+with tab1:
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("📘 Upload HSMT (nhiều file)")
-        hsmt = st.file_uploader(
-            "",
-            type=["pdf", "docx", "xlsx"],
+        st.subheader("📁 Upload HSMT (nhiều file)")
+        hsmt_files = st.file_uploader(
+            "Chọn file HSMT",
+            type=["pdf", "docx"],
             accept_multiple_files=True,
             key="hsmt"
         )
-        if hsmt:
-            st.session_state.hsmt_files = save_files(hsmt, "data/hsmt")
 
     with col2:
-        st.subheader("📕 Upload HSDT (01 nhà thầu – nhiều file)")
-        hsdt = st.file_uploader(
-            "",
-            type=["pdf", "docx", "xlsx"],
+        st.subheader("📁 Upload HSDT (1 nhà thầu – nhiều file)")
+        hsdt_files = st.file_uploader(
+            "Chọn file HSDT",
+            type=["pdf", "docx"],
             accept_multiple_files=True,
             key="hsdt"
         )
-        if hsdt:
-            st.session_state.hsdt_files = save_files(hsdt, "data/hsdt")
-
-    if st.session_state.hsmt_files and st.session_state.hsdt_files:
-        st.success("Hồ sơ đã sẵn sàng để chấm thầu")
 
 # =========================
-# 2. CHẤM THẦU
+# TAB CHẤM THẦU
 # =========================
-elif menu == "Phân tích & chấm thầu":
+
+with tab2:
 
     st.subheader("🧮 Công cụ chấm thầu")
 
-    if not st.session_state.hsmt_files or not st.session_state.hsdt_files:
-        st.warning("Chưa đủ HSMT hoặc HSDT")
+    if not hsmt_files or not hsdt_files:
+        st.warning("Vui lòng upload đầy đủ HSMT và HSDT ở tab Upload.")
         st.stop()
 
-    if st.button("⚖️ CHẤM THẦU"):
-        kq = []
+    if st.button("⚖️ THỰC HIỆN CHẤM THẦU"):
 
-        # A. Thông tin chung
-        kq.append(cham_tieu_chi(
-            "Thông tin chung về nhà thầu",
-            True,
-            "Có đủ thông tin cơ bản theo HSMT"
-        ))
+        with st.spinner("Đang phân tích hồ sơ..."):
 
-        # B. Điều kiện hợp lệ
-        kq.append(cham_tieu_chi(
-            "Điều kiện hợp lệ của HSDT",
-            True,
-            "Có bảo đảm dự thầu, hiệu lực hợp lệ"
-        ))
+            hsmt_text = read_files(hsmt_files)
+            hsdt_text = read_files(hsdt_files)
 
-        # C. Năng lực & kinh nghiệm
-        kq.append(cham_tieu_chi(
-            "Năng lực và kinh nghiệm",
-            True,
-            "Đáp ứng số lượng & giá trị hợp đồng tương tự"
-        ))
+            # =========================
+            # DANH SÁCH TIÊU CHÍ
+            # =========================
 
-        # D. Đề xuất kỹ thuật
-        kq.append(cham_tieu_chi(
-            "Đề xuất kỹ thuật",
-            True,
-            "Giải pháp & biện pháp phù hợp HSMT"
-        ))
+            tieu_chi = [
+                "Thông tin chung",
+                "Điều kiện hợp lệ",
+                "Năng lực và kinh nghiệm",
+                "Đề xuất kỹ thuật",
+                "Nhân sự chủ chốt",
+                "Thiết bị",
+                "Tiến độ thực hiện",
+                "Đề xuất tài chính",
+                "Điều kiện hợp đồng"
+            ]
 
-        # E. Nhân sự
-        kq.append(cham_tieu_chi(
-            "Nhân sự chủ chốt",
-            True,
-            "Nhân sự đáp ứng yêu cầu"
-        ))
+            ket_qua = []
 
-        # F. Thiết bị
-        kq.append(cham_tieu_chi(
-            "Thiết bị thực hiện",
-            True,
-            "Thiết bị phù hợp"
-        ))
+            for i, tc in enumerate(tieu_chi, 1):
 
-        # G. Tài chính
-        kq.append(cham_tieu_chi(
-            "Đề xuất tài chính",
-            True,
-            "Giá dự thầu hợp lệ"
-        ))
+                yeu_cau = tc.lower() in hsmt_text.lower()
+                co_noi_dung = tc.lower() in hsdt_text.lower()
 
-        # H. Điều kiện hợp đồng
-        kq.append(cham_tieu_chi(
-            "Điều kiện hợp đồng & cam kết",
-            True,
-            "Chấp nhận các điều kiện HSMT"
-        ))
+                if yeu_cau and co_noi_dung:
+                    ket_luan = "ĐẠT"
+                    doi_chieu = "Có nội dung trong HSDT phù hợp tiêu chí HSMT"
+                else:
+                    ket_luan = "KHÔNG ĐẠT"
+                    doi_chieu = "Không tìm thấy nội dung phù hợp hoặc thiếu nội dung"
 
-        st.session_state.ket_qua = kq
-        st.success("Chấm thầu hoàn tất")
+                ket_qua.append({
+                    "STT": i,
+                    "Tiêu chí": tc,
+                    "Yêu cầu có trong HSMT": "Có" if yeu_cau else "Không rõ",
+                    "Nội dung có trong HSDT": "Có" if co_noi_dung else "Không",
+                    "Đối chiếu": doi_chieu,
+                    "Kết luận": ket_luan
+                })
 
-# =========================
-# 3. KẾT QUẢ
-# =========================
-elif menu == "Kết quả chấm thầu":
+            df = pd.DataFrame(ket_qua)
 
-    st.subheader("📊 KẾT QUẢ CHẤM THẦU")
+            st.success("✅ Hoàn tất phân tích & đối chiếu")
 
-    if not st.session_state.ket_qua:
-        st.info("Chưa có kết quả")
-        st.stop()
+            st.subheader("📊 BẢNG ĐỐI CHIẾU CHI TIẾT")
+            st.dataframe(df, use_container_width=True)
 
-    dat = True
-    for i in st.session_state.ket_qua:
-        if i["ket_qua"] == "KHÔNG ĐẠT":
-            dat = False
-        st.markdown(
-            f"**{i['tieu_chi']}**: "
-            f":green[ĐẠT]" if i["ket_qua"] == "ĐẠT"
-            else f"**{i['tieu_chi']}**: :red[KHÔNG ĐẠT]"
-        )
-        st.caption(i["ghi_chu"])
-
-    st.divider()
-
-    if dat:
-        st.success("✅ KẾT LUẬN: HỒ SƠ ĐẠT YÊU CẦU KỸ THUẬT")
-    else:
-        st.error("❌ KẾT LUẬN: HỒ SƠ KHÔNG ĐẠT")
+            if (df["Kết luận"] == "KHÔNG ĐẠT").any():
+                st.error("❌ KẾT LUẬN CHUNG: KHÔNG ĐẠT")
+            else:
+                st.success("✅ KẾT LUẬN CHUNG: ĐẠT")
